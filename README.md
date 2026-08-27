@@ -1,73 +1,93 @@
 # Media Downloader (`io.github.adriano.media-downloader`)
 
-Native Omarchy bar widget and interactive panel to search and download audio/video from YouTube and all platforms supported by `yt-dlp`.
+[![Omarchy Plugin](https://img.shields.io/badge/Omarchy-Quattro%20Plugin-blue)](https://omarchyplugins.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![yt-dlp](https://img.shields.io/badge/backend-yt--dlp-red)](https://github.com/yt-dlp/yt-dlp)
+
+A native **Omarchy** shell plugin (`bar-widget` + `panel`) to search, stream info, and download audio & video from YouTube and all platforms supported by `yt-dlp`.
 
 ---
 
-## Features
+## ✨ Features
 
-- 🔍 **Universal Search & URL Detection**: Search YouTube directly by typing queries or paste any video/audio URL (YouTube, SoundCloud, Vimeo, etc.).
-- 🖼️ **Rich Metadata Previews**: Instant thumbnail previews, video duration badges, and channel info.
-- 🎛️ **Format & Quality Control**:
-  - **Video**: MP4 format with selectable resolutions (`Best`, `1080p`, `720p`, `480p`).
-  - **Audio**: Music extraction with codecs (`MP3`, `M4A/AAC`, `FLAC`, `Opus`).
-- ⚡ **Live Download Progress**: Real-time progress bar with download speed (`MB/s`), ETA, downloaded/total size, and stream merging feedback.
-- 📁 **Configurable Directories**: Downloads saved to `~/Downloads` (video) and `~/Music` (audio) with quick one-click "Open File" and "Show in Folder" buttons.
-- 📜 **Download History**: Stores your latest downloads locally with quick launch actions.
-- 🔔 **Desktop Notifications**: Native desktop notifications on completion.
-- ⌨️ **IPC & Keyboard Shortcuts**: Full integration with Omarchy IPC (`omarchy-shell shell summon ...`).
+- 🔍 **YouTube Search & URL Detection**: Search YouTube queries (showing up to 15 scrollable results) or paste direct URLs from YouTube, SoundCloud, Vimeo, and more.
+- 🖼️ **Rich Previews**: Real-time thumbnail previews, duration badges, and channel metadata.
+- 🎛️ **Format & Codec Selector**:
+  - **Video**: MP4 container with selectable resolutions (`Best Available`, `1080p`, `720p`, `480p`).
+  - **Audio**: Direct audio extraction with codecs (`MP3`, `M4A / AAC`, `FLAC`, `Opus`).
+- ⚡ **Live Download Progress**: Real-time progress bar, download speed (`MB/s`), ETA, downloaded/total file size, and post-processing status.
+- 📜 **Scrollable History**: Local download log with quick "Open File" and "Show in Folder" actions.
+- 🔔 **Native Notifications**: Desktop completion alerts.
+- ⌨️ **Keyboard Navigation**: Interactive Quickshell list with mouse wheel and trackpad scroll.
 
 ---
 
-## Requirements
+## 📋 Requirements & Dependencies
 
-Ensure you have `yt-dlp` and `ffmpeg` installed:
+This plugin requires `yt-dlp`, `ffmpeg`, and `python3`:
 
 ```bash
-# Arch Linux
+# Arch Linux / Omarchy
 sudo pacman -S yt-dlp ffmpeg python
 ```
 
 ---
 
-## Installation
+## 📦 Installation
 
-### Method 1: Local Development / Manual Enable
-
-1. Copy the plugin folder to your Omarchy plugins directory:
+To install this plugin via the official Omarchy CLI:
 
 ```bash
+omarchy plugin add https://github.com/<your-username>/omarchy-media-downloader --enable
+```
+
+Or for local development:
+
+```bash
+# 1. Clone or copy to plugins folder
 cp -r io.github.adriano.media-downloader ~/.config/omarchy/plugins/
-```
 
-2. Validate the plugin:
-
-```bash
+# 2. Validate manifest
 omarchy plugin validate ~/.config/omarchy/plugins/io.github.adriano.media-downloader
-```
 
-3. Enable the plugin in the Omarchy bar (e.g., right section):
-
-```bash
+# 3. Enable in bar (right section)
 omarchy plugin enable io.github.adriano.media-downloader right
 ```
 
 ---
 
-## Hyprland Keyboard Shortcut
+## 🗑️ Removal
 
-To summon the Media Downloader directly from anywhere using `SUPER + SHIFT + D`, add this line to your Hyprland configuration (`~/.config/hypr/hyprland.conf` or `~/.config/hypr/binds.conf`):
+To safely remove the plugin from your Omarchy installation:
 
-```ini
-bind = $mainMod SHIFT, D, exec, omarchy-shell shell summon io.github.adriano.media-downloader '{}'
+```bash
+omarchy plugin remove io.github.adriano.media-downloader
 ```
 
 ---
 
-## Architecture
+## ⚙️ Configuration
 
-- **`manifest.json`**: Plugin metadata and configuration schema.
-- **`BarWidget.qml`**: Bar button with icon, click handlers, and IPC listener.
-- **`Panel.qml`**: Quickshell UI panel with state management and animations.
-- **`downloaderctl.py`**: Python backend interface to `yt-dlp` with structured JSON output and progress streaming.
-- **`Model.js`**: Helpers for durations, byte formatting, and URL parsing.
+You can customize the widget icon and default save locations via your Omarchy configuration or directly in `~/.config/omarchy/shell.json`:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `icon` | `string` | `"󰗃"` | Nerd Font glyph shown on the top bar |
+| `defaultAudioDir` | `string` | `"~/Music"` | Destination directory for audio downloads |
+| `defaultVideoDir` | `string` | `"~/Downloads"` | Destination directory for video downloads |
+
+---
+
+## 🏛️ Architecture
+
+- **`manifest.json`**: Plugin metadata conforming to Omarchy Schema Version 1.
+- **`BarWidget.qml`**: Bar widget button with click handlers, tooltips, and IPC listener.
+- **`Panel.qml`**: Quickshell layer-shell popup panel with state transitions, scrollable list, and animations.
+- **`downloaderctl.py`**: Python backend handling queries, URL extraction, progress streaming, and history.
+- **`Model.js`**: Pure JavaScript helper library for duration calculations, byte sizes, and URL detection.
+
+---
+
+## 📄 License
+
+Distributed under the [MIT License](LICENSE).
