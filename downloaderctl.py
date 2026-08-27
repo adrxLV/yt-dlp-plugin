@@ -84,7 +84,7 @@ def get_best_thumbnail(entry):
     return entry.get("thumbnail") or ""
 
 
-def cmd_search(query, limit=5):
+def cmd_search(query, limit=15):
     query = (query or "").strip()
     if not query:
         print(json.dumps({"status": "error", "message": "Empty query"}))
@@ -342,7 +342,7 @@ def main():
     # Search
     search_p = subparsers.add_parser("search")
     search_p.add_argument("query", help="Search query string")
-    search_p.add_argument("--limit", type=int, default=5, help="Number of results (default: 5)")
+    search_p.add_argument("--limit", type=int, default=15, help="Number of results (default: 15)")
 
     # Info
     info_p = subparsers.add_parser("info")

@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
@@ -111,7 +112,7 @@ Panel {
     } else {
       root.statusText = "Searching YouTube for \"" + raw + "\"…"
       root.viewState = "searching"
-      searchProcess.command = [root.helperPath, "search", raw, "--limit", "5"]
+      searchProcess.command = [root.helperPath, "search", raw, "--limit", "15"]
       searchProcess.running = true
     }
   }
@@ -490,15 +491,25 @@ Panel {
             }
           }
 
-          Repeater {
+          ListView {
+            id: resultsListView
+            width: parent.width
+            height: Math.min(contentHeight, Style.space(340))
+            spacing: Style.space(6)
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
             model: root.searchResults
 
-            Rectangle {
+            delegate: Rectangle {
               id: resultCard
               required property var modelData
               required property int index
 
-              width: parent.width
+              width: resultsListView.width
               implicitHeight: Style.space(64)
               radius: Style.cornerRadius
               color: itemHover.hovered ? Util.alpha(Color.accent, 0.14) : Util.alpha(root.contentForeground, 0.04)
@@ -1176,15 +1187,25 @@ Panel {
             width: parent.width
           }
 
-          Repeater {
-            model: root.historyList.slice(0, 5)
+          ListView {
+            id: historyListView
+            width: parent.width
+            height: Math.min(contentHeight, Style.space(260))
+            spacing: Style.space(6)
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
 
-            Rectangle {
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+            model: root.historyList
+
+            delegate: Rectangle {
               id: histCard
               required property var modelData
               required property int index
 
-              width: parent.width
+              width: historyListView.width
               implicitHeight: Style.space(48)
               radius: Style.cornerRadius
               color: histHover.hovered ? Util.alpha(Color.accent, 0.12) : Util.alpha(root.contentForeground, 0.03)
