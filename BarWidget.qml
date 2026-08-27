@@ -6,7 +6,7 @@ import "Model.js" as Model
 
 BarWidget {
   id: root
-  moduleName: "io.github.adriano.media-downloader"
+  moduleName: "adrxlv.yt-dlp-plugin"
 
   readonly property string barIcon: setting("icon", Model.defaultIcon())
   readonly property bool opened: panelLoader.item
@@ -67,7 +67,7 @@ BarWidget {
   }
 
   IpcHandler {
-    target: "io.github.adriano.media-downloader"
+    target: "adrxlv.yt-dlp-plugin"
 
     function refresh(): void { root.refresh() }
     function open(): void { root.open() }

@@ -1,4 +1,4 @@
-# Media Downloader (`io.github.adriano.media-downloader`)
+# Media Downloader (`adrxlv.yt-dlp-plugin`)
 
 [![Omarchy Plugin](https://img.shields.io/badge/Omarchy-Quattro%20Plugin-blue)](https://omarchyplugins.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -38,20 +38,20 @@ sudo pacman -S yt-dlp ffmpeg python
 To install this plugin via the official Omarchy CLI:
 
 ```bash
-omarchy plugin add https://github.com/<your-username>/omarchy-media-downloader --enable
+omarchy plugin add https://github.com/adrxlv/yt-dlp-plugin --enable
 ```
 
 Or for local development:
 
 ```bash
 # 1. Clone or copy to plugins folder
-cp -r io.github.adriano.media-downloader ~/.config/omarchy/plugins/
+cp -r adrxlv.yt-dlp-plugin ~/.config/omarchy/plugins/
 
 # 2. Validate manifest
-omarchy plugin validate ~/.config/omarchy/plugins/io.github.adriano.media-downloader
+omarchy plugin validate ~/.config/omarchy/plugins/adrxlv.yt-dlp-plugin
 
 # 3. Enable in bar (right section)
-omarchy plugin enable io.github.adriano.media-downloader right
+omarchy plugin enable adrxlv.yt-dlp-plugin right
 ```
 
 ---
@@ -61,7 +61,7 @@ omarchy plugin enable io.github.adriano.media-downloader right
 To safely remove the plugin from your Omarchy installation:
 
 ```bash
-omarchy plugin remove io.github.adriano.media-downloader
+omarchy plugin remove adrxlv.yt-dlp-plugin
 ```
 
 ---

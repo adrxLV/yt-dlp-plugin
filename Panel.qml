@@ -11,8 +11,8 @@ import "Model.js" as Model
 
 Panel {
   id: root
-  moduleName: "io.github.adriano.media-downloader"
-  ipcTarget: "io.github.adriano.media-downloader"
+  moduleName: "adrxlv.yt-dlp-plugin"
+  ipcTarget: "adrxlv.yt-dlp-plugin"
   manageIpc: false
 
   property var anchorItem: null
