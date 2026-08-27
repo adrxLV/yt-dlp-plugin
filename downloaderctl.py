@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+"""
+downloaderctl.py - Backend helper for Omarchy Media Downloader plugin.
+Interfaces with yt-dlp, ffmpeg, and manages history/downloads.
+"""
+
+import sys
+import os
+import json
+import subprocess
+import argparse
+import time
+import shutil
+import re
+from pathlib import Path
+
+CONFIG_DIR = Path.home() / ".config" / "omarchy" / "media-downloader"
+HISTORY_FILE = CONFIG_DIR / "history.json"
+
+
+def ensure_config_dir():
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def format_duration(seconds):
+    if not seconds or seconds <= 0:
+        return "--:--"
+    try:
+        s = int(seconds)
+        m, s = divmod(s, 60)
+        h, m = divmod(m, 60)
+        if h > 0:
+            return f"{h}:{m:02d}:{s:02d}"
+        return f"{m}:{s:02d}"
+    except Exception:
+        return "--:--"
+
+
+def load_history():
+    ensure_config_dir()
+    if not HISTORY_FILE.exists():
+        return []
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def save_history(entry):
+    ensure_config_dir()
+    history = load_history()
+    # Deduplicate by url/path
+    history = [h for h in history if h.get("url") != entry.get("url") or h.get("path") != entry.get("path")]
+    history.insert(0, entry)
+    history = history[:50]  # keep latest 50
+    try:
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to save history: {e}\n")
+
+
+def send_notification(title, message, icon="media-playback-start"):
+    if shutil.which("notify-send"):
+        try:
+            subprocess.run(
+                ["notify-send", "-a", "Media Downloader", "-i", icon, title, message],
+                capture_output=True,
+                check=False
+            )
+        except Exception:
+            pass
+
+
+def get_best_thumbnail(entry):
+    thumbs = entry.get("thumbnails")
+    if thumbs and isinstance(thumbs, list):
+        # Pick the largest/latest thumbnail
+        for t in reversed(thumbs):
+            url = t.get("url")
+            if url:
+                return url
+    return entry.get("thumbnail") or ""
+
+
+def cmd_search(query, limit=5):
+    query = (query or "").strip()
+    if not query:
+        print(json.dumps({"status": "error", "message": "Empty query"}))
+        return 1
+
+    search_target = f"ytsearch{limit}:{query}"
+    cmd = [
+        "yt-dlp",
+        search_target,
+        "--flat-playlist",
+        "--dump-single-json",
+        "--no-warnings",
+        "--ignore-errors",
+        "--no-check-certificates"
+    ]
+
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if res.returncode != 0 and not res.stdout.strip():
+            print(json.dumps({"status": "error", "message": res.stderr.strip() or "Search failed"}))
+            return 1
+
+        data = json.loads(res.stdout) if res.stdout.strip() else {}
+        raw_entries = data.get("entries", [])
+        results = []
+
+        for e in raw_entries:
+            if not e:
+                continue
+            video_id = e.get("id") or ""
+            video_url = e.get("url") or (f"https://www.youtube.com/watch?v=CCHdMIEGaaM" if not video_id else f"https://www.youtube.com/watch?v={video_id}")
+            if video_id and not video_url.startswith("http"):
+                video_url = f"https://www.youtube.com/watch?v={video_id}"
+
+            dur = e.get("duration")
+            results.append({
+                "id": video_id,
+                "title": e.get("title") or "Unknown Title",
+                "channel": e.get("channel") or e.get("uploader") or "YouTube",
+                "duration": dur or 0,
+                "duration_str": format_duration(dur),
+                "thumbnail": get_best_thumbnail(e),
+                "url": video_url
+            })
+
+        print(json.dumps({
+            "status": "ok",
+            "type": "search",
+            "query": query,
+            "count": len(results),
+            "results": results
+        }, ensure_ascii=False))
+        return 0
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}))
+        return 1
+
+
+def cmd_info(url):
+    url = (url or "").strip()
+    if not url:
+        print(json.dumps({"status": "error", "message": "Empty URL"}))
+        return 1
+
+    cmd = [
+        "yt-dlp",
+        url,
+        "--dump-single-json",
+        "--no-playlist",
+        "--no-warnings",
+        "--ignore-errors",
+        "--no-check-certificates"
+    ]
+
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if res.returncode != 0 and not res.stdout.strip():
+            print(json.dumps({"status": "error", "message": res.stderr.strip() or "Failed to fetch metadata"}))
+            return 1
+
+        data = json.loads(res.stdout)
+        dur = data.get("duration")
+        result = {
+            "id": data.get("id") or "",
+            "title": data.get("title") or "Unknown Title",
+            "channel": data.get("channel") or data.get("uploader") or "Online Media",
+            "duration": dur or 0,
+            "duration_str": format_duration(dur),
+            "thumbnail": get_best_thumbnail(data),
+            "url": data.get("webpage_url") or url,
+            "extractor": data.get("extractor_key") or data.get("extractor") or "Media"
+        }
+
+        print(json.dumps({
+            "status": "ok",
+            "type": "info",
+            "result": result
+        }, ensure_ascii=False))
+        return 0
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}))
+        return 1
+
+
+def cmd_download(args):
+    url = args.url.strip()
+    mode = args.mode.lower()
+    quality = args.quality.lower()
+    audio_format = args.audio_format.lower()
+    out_dir = os.path.expanduser(args.out_dir)
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Output template
+    output_template = os.path.join(out_dir, "%(title)s.%(ext)s")
+
+    cmd = [
+        "yt-dlp",
+        "--newline",
+        "--no-playlist",
+        "--no-check-certificates",
+        "--output", output_template
+    ]
+
+    if mode == "audio":
+        cmd += [
+            "-x",
+            "--audio-format", audio_format,
+            "--audio-quality", "0"
+        ]
+    else:  # video
+        if quality == "1080":
+            cmd += ["--format", "bv*[height<=1080]+ba/b[height<=1080]/best"]
+        elif quality == "720":
+            cmd += ["--format", "bv*[height<=720]+ba/b[height<=720]/best"]
+        elif quality == "480":
+            cmd += ["--format", "bv*[height<=480]+ba/b[height<=480]/best"]
+        else:  # best
+            cmd += ["--format", "bv*+ba/b"]
+        cmd += ["--merge-output-format", "mp4"]
+
+    # Add custom progress template
+    # Example format: PROGRESS:{"percent":"45.2%","downloaded":"12.5MiB","total":"27.6MiB","speed":"3.2MiB/s","eta":"00:04"}
+    progress_tpl = 'PROGRESS:{"percent":"%(progress._percent_str)s","downloaded":"%(progress._downloaded_bytes_str)s","total":"%(progress._total_bytes_str)s","speed":"%(progress._speed_str)s","eta":"%(progress._eta_str)s","status":"%(progress.status)s"}'
+    cmd += ["--progress-template", progress_tpl]
+
+    # Print final filename on finish
+    cmd += ["--print", "after_move:FINAL_PATH:%(filepath)s", "--print", "after_move:FINAL_TITLE:%(title)s"]
+    cmd.append(url)
+
+    final_path = ""
+    final_title = ""
+    error_lines = []
+
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+            universal_newlines=True
+        )
+
+        for line in process.stdout:
+            line_str = line.strip()
+            if not line_str:
+                continue
+
+            if line_str.startswith("PROGRESS:"):
+                # Clean up raw ansi codes if any and print
+                clean_json_str = line_str[len("PROGRESS:"):].strip()
+                # Clean color codes
+                clean_json_str = re.sub(r'\x1b\[[0-9;]*m', '', clean_json_str)
+                print(f"PROGRESS:{clean_json_str}", flush=True)
+            elif line_str.startswith("FINAL_PATH:"):
+                final_path = line_str[len("FINAL_PATH:"):].strip()
+            elif line_str.startswith("FINAL_TITLE:"):
+                final_title = line_str[len("FINAL_TITLE:"):].strip()
+            else:
+                # Other normal output
+                print(line_str, flush=True)
+
+        process.wait()
+
+        if process.returncode != 0:
+            stderr_out = process.stderr.read()
+            err_msg = stderr_out.strip() or "Download failed"
+            print(f"ERROR:{json.dumps({'message': err_msg})}", flush=True)
+            return process.returncode
+
+        # If final_path not caught by print template, check output directory
+        if not final_title:
+            final_title = os.path.basename(final_path) if final_path else "Media Download"
+
+        filesize_str = ""
+        if final_path and os.path.exists(final_path):
+            try:
+                sz = os.path.getsize(final_path)
+                if sz > 1024 * 1024 * 1024:
+                    filesize_str = f"{sz / (1024*1024*1024):.1f} GB"
+                elif sz > 1024 * 1024:
+                    filesize_str = f"{sz / (1024*1024):.1f} MB"
+                else:
+                    filesize_str = f"{sz / 1024:.1f} KB"
+            except Exception:
+                pass
+
+        history_entry = {
+            "title": final_title,
+            "path": final_path,
+            "filename": os.path.basename(final_path) if final_path else final_title,
+            "size": filesize_str,
+            "mode": mode,
+            "url": url,
+            "timestamp": int(time.time()),
+            "time_str": time.strftime("%Y-%m-%d %H:%M")
+        }
+
+        save_history(history_entry)
+
+        complete_json = json.dumps(history_entry, ensure_ascii=False)
+        print(f"COMPLETE:{complete_json}", flush=True)
+
+        send_notification("Download Complete", f"{final_title}\nSaved to {final_path or out_dir}")
+        return 0
+
+    except Exception as e:
+        print(f"ERROR:{json.dumps({'message': str(e)})}", flush=True)
+        return 1
+
+
+def cmd_history():
+    history = load_history()
+    print(json.dumps({"status": "ok", "history": history}, ensure_ascii=False))
+    return 0
+
+
+def cmd_clear_history():
+    ensure_config_dir()
+    try:
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f)
+        print(json.dumps({"status": "ok"}))
+        return 0
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}))
+        return 1
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Media downloader controller")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # Search
+    search_p = subparsers.add_parser("search")
+    search_p.add_argument("query", help="Search query string")
+    search_p.add_argument("--limit", type=int, default=5, help="Number of results (default: 5)")
+
+    # Info
+    info_p = subparsers.add_parser("info")
+    info_p.add_argument("url", help="Media URL")
+
+    # Download
+    dl_p = subparsers.add_parser("download")
+    dl_p.add_argument("--url", required=True, help="Media URL to download")
+    dl_p.add_argument("--mode", default="video", choices=["video", "audio"], help="Download mode")
+    dl_p.add_argument("--quality", default="best", choices=["best", "1080", "720", "480"], help="Video quality")
+    dl_p.add_argument("--audio-format", default="mp3", choices=["mp3", "m4a", "opus", "flac", "wav"], help="Audio format")
+    dl_p.add_argument("--out-dir", default="~/Downloads", help="Save directory")
+
+    # History
+    subparsers.add_parser("history")
+    subparsers.add_parser("clear-history")
+
+    args = parser.parse_args()
+
+    if args.command == "search":
+        sys.exit(cmd_search(args.query, args.limit))
+    elif args.command == "info":
+        sys.exit(cmd_info(args.url))
+    elif args.command == "download":
+        sys.exit(cmd_download(args))
+    elif args.command == "history":
+        sys.exit(cmd_history())
+    elif args.command == "clear-history":
+        sys.exit(cmd_clear_history())
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

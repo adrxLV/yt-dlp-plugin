@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.adriano.media-downloader",
+  "name": "Media Downloader",
+  "version": "0.1.0",
+  "author": "Adriano",
+  "license": "MIT",
+  "description": "Search and download media from YouTube and supported platforms.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Media Downloader",
+    "description": "Search and download media directly from the shell bar",
+    "category": "Media",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "icon": "󰗃",
+      "defaultAudioDir": "~/Music",
+      "defaultVideoDir": "~/Downloads"
+    },
+    "schema": [
+      {
+        "key": "icon",
+        "type": "string",
+        "label": "Bar icon (Nerd Font glyph)",
+        "defaultValue": "󰗃"
+      },
+      {
+        "key": "defaultAudioDir",
+        "type": "string",
+        "label": "Audio download folder",
+        "defaultValue": "~/Music"
+      },
+      {
+        "key": "defaultVideoDir",
+        "type": "string",
+        "label": "Video download folder",
+        "defaultValue": "~/Downloads"
+      }
+    ]
+  }
+}
