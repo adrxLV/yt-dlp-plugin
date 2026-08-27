@@ -206,6 +206,7 @@ def cmd_download(args):
         "--newline",
         "--no-playlist",
         "--no-check-certificates",
+        "--progress",
         "--output", output_template
     ]
 
@@ -226,18 +227,16 @@ def cmd_download(args):
             cmd += ["--format", "bv*+ba/b"]
         cmd += ["--merge-output-format", "mp4"]
 
-    # Add custom progress template
-    # Example format: PROGRESS:{"percent":"45.2%","downloaded":"12.5MiB","total":"27.6MiB","speed":"3.2MiB/s","eta":"00:04"}
-    progress_tpl = 'PROGRESS:{"percent":"%(progress._percent_str)s","downloaded":"%(progress._downloaded_bytes_str)s","total":"%(progress._total_bytes_str)s","speed":"%(progress._speed_str)s","eta":"%(progress._eta_str)s","status":"%(progress.status)s"}'
-    cmd += ["--progress-template", progress_tpl]
-
-    # Print final filename on finish
-    cmd += ["--print", "after_move:FINAL_PATH:%(filepath)s", "--print", "after_move:FINAL_TITLE:%(title)s"]
+    # Custom progress template (using download: prefix to avoid suppressing other stages)
+    progress_tpl = 'download:PROGRESS:{"percent":"%(progress._percent_str)s","downloaded":"%(progress._downloaded_bytes_str)s","total":"%(progress._total_bytes_str)s","speed":"%(progress._speed_str)s","eta":"%(progress._eta_str)s","status":"%(progress.status)s"}'
+    cmd += [
+        "--progress-template", progress_tpl,
+        "--exec", "after_move:echo FINAL_PATH:{}"
+    ]
     cmd.append(url)
 
     final_path = ""
     final_title = ""
-    error_lines = []
 
     try:
         process = subprocess.Popen(
@@ -254,19 +253,54 @@ def cmd_download(args):
             if not line_str:
                 continue
 
-            if line_str.startswith("PROGRESS:"):
-                # Clean up raw ansi codes if any and print
-                clean_json_str = line_str[len("PROGRESS:"):].strip()
-                # Clean color codes
-                clean_json_str = re.sub(r'\x1b\[[0-9;]*m', '', clean_json_str)
-                print(f"PROGRESS:{clean_json_str}", flush=True)
-            elif line_str.startswith("FINAL_PATH:"):
-                final_path = line_str[len("FINAL_PATH:"):].strip()
-            elif line_str.startswith("FINAL_TITLE:"):
-                final_title = line_str[len("FINAL_TITLE:"):].strip()
-            else:
-                # Other normal output
-                print(line_str, flush=True)
+            # Strip ANSI escape codes
+            clean_line = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', line_str).strip()
+
+            if "PROGRESS:" in clean_line:
+                idx = clean_line.find("PROGRESS:")
+                json_part = clean_line[idx + len("PROGRESS:"):].strip()
+                try:
+                    pdata = json.loads(json_part)
+                    percent_raw = str(pdata.get("percent", "")).strip()
+                    speed_raw = str(pdata.get("speed", "")).strip()
+                    eta_raw = str(pdata.get("eta", "")).strip()
+                    dl_raw = str(pdata.get("downloaded", "")).strip()
+                    tot_raw = str(pdata.get("total", "")).strip()
+                    status_raw = str(pdata.get("status", "")).strip()
+
+                    clean_obj = {
+                        "percent": percent_raw if percent_raw != "NA" else "100%",
+                        "speed": speed_raw if speed_raw not in ("NA", "Unknown", "Unknown B/s") else "—",
+                        "eta": eta_raw if eta_raw not in ("NA", "Unknown") else "—",
+                        "downloaded": dl_raw if dl_raw != "NA" else "",
+                        "total": tot_raw if tot_raw != "NA" else "",
+                        "status": status_raw if status_raw != "NA" else "downloading"
+                    }
+                    print(f"PROGRESS:{json.dumps(clean_obj)}", flush=True)
+                except Exception:
+                    pass
+            elif clean_line.startswith("FINAL_PATH:"):
+                extracted = clean_line[len("FINAL_PATH:"):].strip().strip("'\"")
+                if extracted:
+                    final_path = extracted
+            elif "[Merger] Merging formats into " in clean_line:
+                m = re.search(r'\[Merger\] Merging formats into ["\'](.*?)["\']', clean_line)
+                if m:
+                    final_path = m.group(1).strip()
+                print(f'PROGRESS:{json.dumps({"percent": "100%", "speed": "—", "eta": "—", "downloaded": "", "total": "", "status": "Merging streams…"})}', flush=True)
+            elif "[ExtractAudio] Destination: " in clean_line:
+                dest = clean_line.split("[ExtractAudio] Destination: ", 1)[1].strip()
+                final_path = dest
+                print(f'PROGRESS:{json.dumps({"percent": "100%", "speed": "—", "eta": "—", "downloaded": "", "total": "", "status": "Extracting audio…"})}', flush=True)
+            elif "has already been downloaded" in clean_line:
+                m = re.search(r'\[download\] (.*?) has already been downloaded', clean_line)
+                if m:
+                    final_path = m.group(1).strip()
+                print(f'PROGRESS:{json.dumps({"percent": "100%", "speed": "—", "eta": "—", "downloaded": "", "total": "", "status": "Already downloaded"})}', flush=True)
+            elif clean_line.startswith("[download] Destination: ") and not final_path:
+                cand = clean_line.split("[download] Destination: ", 1)[1].strip()
+                if not any(cand.endswith(x) for x in [".f137", ".f248", ".f399", ".f395", ".f251", ".part"]):
+                    final_path = cand
 
         process.wait()
 

@@ -180,13 +180,21 @@ Panel {
     if (!line) return
     var prog = Model.parseProgressLine(line)
     if (prog) {
-      var pct = parseFloat(String(prog.percent || "").replace("%", ""))
+      var pct = parseFloat(String(prog.percent || "").replace("%", "").trim())
       if (!isNaN(pct)) root.downloadPercent = Math.max(0, Math.min(100, pct))
-      if (prog.speed) root.downloadSpeed = prog.speed
-      if (prog.eta) root.downloadEta = prog.eta
-      if (prog.downloaded) root.downloadDownloaded = prog.downloaded
-      if (prog.total) root.downloadTotal = prog.total
-      if (prog.status) root.downloadStatusPhrase = prog.status === "downloading" ? "Downloading streams…" : prog.status
+      if (prog.speed && prog.speed !== "—" && prog.speed !== "NA") root.downloadSpeed = prog.speed
+      if (prog.eta && prog.eta !== "—" && prog.eta !== "NA") root.downloadEta = prog.eta
+      if (prog.downloaded && prog.downloaded !== "NA") root.downloadDownloaded = prog.downloaded
+      if (prog.total && prog.total !== "NA") root.downloadTotal = prog.total
+      if (prog.status) {
+        if (prog.status === "downloading") {
+          root.downloadStatusPhrase = "Downloading streams…"
+        } else if (prog.status === "finished") {
+          root.downloadStatusPhrase = "Stream downloaded, finalizing…"
+        } else {
+          root.downloadStatusPhrase = prog.status
+        }
+      }
       return
     }
 
@@ -915,14 +923,28 @@ Panel {
             width: parent.width
             spacing: Style.space(8)
 
-            Text {
+            ColumnLayout {
               Layout.fillWidth: true
-              text: root.selectedItem ? root.selectedItem.title : "Downloading Media"
-              color: root.contentForeground
-              font.family: root.contentFontFamily
-              font.pixelSize: Style.font.body
-              font.bold: true
-              elide: Text.ElideRight
+              spacing: Style.space(2)
+
+              Text {
+                Layout.fillWidth: true
+                text: root.selectedItem ? root.selectedItem.title : "Downloading Media"
+                color: root.contentForeground
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.body
+                font.bold: true
+                elide: Text.ElideRight
+              }
+
+              Text {
+                Layout.fillWidth: true
+                text: root.downloadStatusPhrase || "Downloading streams…"
+                color: root.contentDim
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+              }
             }
 
             Text {
@@ -931,6 +953,7 @@ Panel {
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.body
               font.bold: true
+              Layout.alignment: Qt.AlignVCenter
             }
           }
 
@@ -953,9 +976,12 @@ Panel {
               height: progTrack.height
               radius: progTrack.radius
               color: Color.accent
-              width: Math.max(progTrack.height, progTrack.width * (root.downloadPercent / 100))
+              width: root.downloadPercent > 0
+                ? Math.max(progTrack.height, progTrack.width * (Math.min(100, root.downloadPercent) / 100))
+                : 0
+              visible: root.downloadPercent > 0
 
-              Behavior on width { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
+              Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
               SequentialAnimation on opacity {
                 running: root.viewState === "downloading"
@@ -985,7 +1011,20 @@ Panel {
             Column {
               Layout.fillWidth: true
               Text { text: "Progress"; color: root.contentDim; font.pixelSize: Style.font.caption; font.family: root.contentFontFamily }
-              Text { text: (root.downloadDownloaded || "0 MB") + " / " + (root.downloadTotal || "—"); color: root.contentForeground; font.pixelSize: Style.font.bodySmall; font.bold: true; font.family: root.contentFontFamily }
+              Text {
+                text: {
+                  var dl = root.downloadDownloaded || ""
+                  var tot = root.downloadTotal || ""
+                  if (dl && tot) return dl + " / " + tot
+                  if (dl) return dl
+                  if (tot) return tot
+                  return "—"
+                }
+                color: root.contentForeground
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+                font.family: root.contentFontFamily
+              }
             }
           }
 
