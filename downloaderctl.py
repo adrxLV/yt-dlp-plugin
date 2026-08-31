@@ -16,6 +16,8 @@ from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".config" / "omarchy" / "media-downloader"
 HISTORY_FILE = CONFIG_DIR / "history.json"
+MAX_OUTPUT_BYTES = 10 * 1024 * 1024  # 10 MB ceiling for json metadata
+DEFAULT_TIMEOUT = 30  # 30s timeout for search and info subprocess calls
 
 
 def ensure_config_dir():
@@ -97,17 +99,27 @@ def cmd_search(query, limit=15):
         "--flat-playlist",
         "--dump-single-json",
         "--no-warnings",
-        "--ignore-errors",
-        "--no-check-certificates"
+        "--ignore-errors"
     ]
 
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=DEFAULT_TIMEOUT
+        )
         if res.returncode != 0 and not res.stdout.strip():
             print(json.dumps({"status": "error", "message": res.stderr.strip() or "Search failed"}))
             return 1
 
-        data = json.loads(res.stdout) if res.stdout.strip() else {}
+        stdout_content = res.stdout
+        if len(stdout_content) > MAX_OUTPUT_BYTES:
+            print(json.dumps({"status": "error", "message": "Search output exceeded maximum allowed size"}))
+            return 1
+
+        data = json.loads(stdout_content) if stdout_content.strip() else {}
         raw_entries = data.get("entries", [])
         results = []
 
@@ -115,9 +127,13 @@ def cmd_search(query, limit=15):
             if not e:
                 continue
             video_id = e.get("id") or ""
-            video_url = e.get("url") or (f"https://www.youtube.com/watch?v=CCHdMIEGaaM" if not video_id else f"https://www.youtube.com/watch?v={video_id}")
+            video_url = e.get("url") or ""
+            if not video_id and not video_url:
+                continue
             if video_id and not video_url.startswith("http"):
                 video_url = f"https://www.youtube.com/watch?v={video_id}"
+            elif not video_url.startswith("http"):
+                continue
 
             dur = e.get("duration")
             results.append({
@@ -138,6 +154,9 @@ def cmd_search(query, limit=15):
             "results": results
         }, ensure_ascii=False))
         return 0
+    except subprocess.TimeoutExpired:
+        print(json.dumps({"status": "error", "message": "Search timed out"}))
+        return 1
     except Exception as e:
         print(json.dumps({"status": "error", "message": str(e)}))
         return 1
@@ -155,17 +174,27 @@ def cmd_info(url):
         "--dump-single-json",
         "--no-playlist",
         "--no-warnings",
-        "--ignore-errors",
-        "--no-check-certificates"
+        "--ignore-errors"
     ]
 
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=DEFAULT_TIMEOUT
+        )
         if res.returncode != 0 and not res.stdout.strip():
             print(json.dumps({"status": "error", "message": res.stderr.strip() or "Failed to fetch metadata"}))
             return 1
 
-        data = json.loads(res.stdout)
+        stdout_content = res.stdout
+        if len(stdout_content) > MAX_OUTPUT_BYTES:
+            print(json.dumps({"status": "error", "message": "Metadata output exceeded maximum allowed size"}))
+            return 1
+
+        data = json.loads(stdout_content)
         dur = data.get("duration")
         result = {
             "id": data.get("id") or "",
@@ -184,6 +213,9 @@ def cmd_info(url):
             "result": result
         }, ensure_ascii=False))
         return 0
+    except subprocess.TimeoutExpired:
+        print(json.dumps({"status": "error", "message": "Metadata request timed out"}))
+        return 1
     except Exception as e:
         print(json.dumps({"status": "error", "message": str(e)}))
         return 1
@@ -205,7 +237,6 @@ def cmd_download(args):
         "yt-dlp",
         "--newline",
         "--no-playlist",
-        "--no-check-certificates",
         "--progress",
         "--output", output_template
     ]
